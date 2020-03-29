@@ -3,7 +3,7 @@
 # Autor:   Tomas Willaschek
 # Rok:     2020
 PROJ=plg-2-nka
-SRC=src/Main.hs
+SRC=src/Main.hs src/Types.hs
 
 default:
 	ghc --make $(SRC) -o $(PROJ)
