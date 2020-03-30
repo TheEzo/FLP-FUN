@@ -30,7 +30,7 @@ main = do
 
   -- Validate non terminals and terminals in rules
   when (length [fst x | x <- rules, not $ elem (fst x) nonTerminals] > 0) $ raise "Rules contain unknown non-terminal"
-  unless (validateTerms terminals [snd x | x <- rules]) $ raise "Rules contain unknown terminal"
+  -- unless (validateTerms terminals [snd x | x <- rules]) $ raise "Rules contain unknown terminal"
 
   -- end of validation
 
@@ -40,6 +40,40 @@ main = do
                     "-1" -> print $ head args
                     "-2" -> print $ head args
                     _    -> raise "Unknown argument..."
+
+  putStrLn "---------------------------------"
+  -- ["A", "B", "C"] --> ["A1", "B2", "C3"]
+  print $ nonT 0 nonTerminals
+  putStrLn "---------------------------------"
+  -- rules to [(N, [N right sides])]
+  print [(x,z) | x <- nonTerminals, let z = [y | (r,y) <- rules, r == x]]
+  putStrLn "---------------------------------"
+  -- print $ split "A" "aab"
+  splitR "A" "aB"
+
+-- test :: (String, [String]) -> 
+-- test (s,[rules]) = 
+
+-- start symbol -> right side -> [(start, right side)] :: A -> xB
+-- splitR :: String -> String -> [(String, String)]
+-- splitR s (x:xs) = if length xs > 2
+--                   then splitR
+	-- if (isLower $ head x) && (isUpper $ head xs)
+	--               then print "a" -- [(s,x:xs)]
+	--               else print "b" -- [(s,x)]
+-- ++splitR (head xs) (tail xs)
+
+nonT :: Int -> [String] -> [String]
+nonT _ []     = []
+nonT i (x:xs) = list++(nonT j xs)
+  where
+    j = (getLastI list) + 1
+    list = [x ++ (show i) :: String]
+
+getLastI :: [String] -> Int
+getLastI [] = 0
+getLastI x  = read(tail $ last x) :: Int
+
 
 raise :: String -> IO a
 raise str = die str
@@ -55,8 +89,8 @@ printGrammar g = do
   putStrLn [start g]
   putStrLn $ intercalate "\n" [fst x++"->"++snd x | x <- rules g]
 
-validateTerms :: [String] -> [String] -> Bool
-validateTerms xs (y:ys) = if elem y xs 
-                          then validateTerms xs ys 
-                          else (if isUpper $ head y then validateTerms xs ys else False) 
-validateTerms xs []     = True
+-- validateTerms :: [String] -> [String] -> Bool
+-- validateTerms xs (y:ys) = if elem y xs || head y == '#'
+--                           then validateTerms xs ys 
+--                           else (if isUpper $ head y then validateTerms xs ys else False) 
+-- validateTerms xs []     = True
