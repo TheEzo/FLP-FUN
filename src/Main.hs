@@ -30,6 +30,8 @@ main = do
 
   -- Validate non terminals and terminals in rules
   when (length [fst x | x <- rules, not $ elem (fst x) nonTerminals] > 0) $ raise "Rules contain unknown non-terminal"
+  unless (elem [start] nonTerminals) $ raise "Start symbol must be non-terminal"
+  -- when length [t | t <- terminals, elem t ['a'..'z']] > 0 $ raise "Terminal symbols contain prohibited symbol"
   -- unless (validateTerms terminals [snd x | x <- rules]) $ raise "Rules contain unknown terminal"
 
   -- end of validation
@@ -37,37 +39,72 @@ main = do
   let g = Grammar nonTerminals terminals rules start
 
   case head args of "-i" -> printGrammar g
-                    "-1" -> print $ head args
+                    "-1" -> transform g
                     "-2" -> print $ head args
                     _    -> raise "Unknown argument..."
 
-  putStrLn "---------------------------------"
-  -- ["A", "B", "C"] --> ["A1", "B2", "C3"]
-  print $ nonT 0 nonTerminals
-  putStrLn "---------------------------------"
-  -- rules to [(N, [N right sides])]
-  print [(x,z) | x <- nonTerminals, let z = [y | (r,y) <- rules, r == x]]
-  putStrLn "---------------------------------"
-  -- print $ split "A" "aab"
-  splitR "A" "aB"
+  -- putStrLn "---------------------------------"
+  -- -- ["A", "B", "C"] --> ["A1", "B2", "C3"]
+  -- print $ nonT 0 nonTerminals
+  -- putStrLn "---------------------------------"
+  
+  -- -- rules to [(N, [N right sides])] -- bude potreba pro KA asi
+  -- print [(x,z) | x <- nonTerminals, let z = [y | (r,y) <- rules, r == x]]
+  -- putStrLn "---------------------------------"
+  -- -- kaslu na setreni znaky zatim
+  -- -- let neededNonTerminals = length  [(x,z) | x <- nonTerminals, let z = [y | (r,y) <- rules, r == x], length z > 1]
+  -- let neededNonTerminals = length [(x,z) | x <- nonTerminals, let z = [y | (r,y) <- rules, r == x]]
+  -- print $ splitR "A" "aaB"
 
--- test :: (String, [String]) -> 
--- test (s,[rules]) = 
 
+  -- putStrLn "---------------------------------"
+  -- -- vygenerovani novych neterminalu pro 3.2 gramatiku
+  -- print nonTerminals
+  -- let newNonTerminals = getNewNonTerminals neededNonTerminals nonTerminals
+
+
+-- transform grammar to N->tN form
+transform g = do
+  -- let neededNonTerminals = length [(x,z) | x <- nonTerminals g, let z = [y | (r,y) <- rules g, r == x]]
+  let neededNonTerminals = length $ rules g
+
+  -- vygenerovani novych neterminalu pro 3.2 gramatiku
+  let newNonTerminals = getNewNonTerminals neededNonTerminals $ nonTerminals g
+  print newNonTerminals
+  putStrLn "---------------------------------"
+  print $ rules g
+
+  --TODO: generate NT1..NTn
+  print [splitRule r | r <- zip newNonTerminals (rules g)]
+  print $ nonT 5 "H"
 -- start symbol -> right side -> [(start, right side)] :: A -> xB
--- splitR :: String -> String -> [(String, String)]
--- splitR s (x:xs) = if length xs > 2
---                   then splitR
-	-- if (isLower $ head x) && (isUpper $ head xs)
-	--               then print "a" -- [(s,x:xs)]
-	--               else print "b" -- [(s,x)]
--- ++splitR (head xs) (tail xs)
+-- splitRule :: String -> String -> [(String, String)]
+-- splitRule :: String -> (String, String) -> String
+splitRule (h,(s,(x:xs))) = if length xs > 1
+                           then [(h,h)] -- [(s,x++(head h))]++splitRule (tail h,(head $ tail h,xs))
+                           else [(h,xs)] -- (s++"->"++[x]++xs)    h++s++[x]++xs 
 
-nonT :: Int -> [String] -> [String]
-nonT _ []     = []
-nonT i (x:xs) = list++(nonT j xs)
+
+-- generate i non terminals that are not already present in xs
+getNewNonTerminals :: Int -> [String] -> [String]
+getNewNonTerminals 0 xs = []
+getNewNonTerminals i xs = nonternimal++getNewNonTerminals (i-1) (xs++nonternimal)
   where
-    j = (getLastI list) + 1
+  	nonternimal = [generateNonTerminal [] xs]
+
+-- generate NT which is not present in xs
+generateNonTerminal :: String -> [String] -> String
+generateNonTerminal [] xs   = generateNonTerminal "A" xs
+generateNonTerminal prev xs = if elem prev xs
+                              then generateNonTerminal [succ $ head prev] xs
+                              else prev
+
+
+nonT :: Int -> String -> [String]
+nonT 0 _ = []
+nonT i x = list++(nonT j x)
+  where
+    j = (getLastI list) - 1
     list = [x ++ (show i) :: String]
 
 getLastI :: [String] -> Int
