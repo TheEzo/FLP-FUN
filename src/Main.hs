@@ -45,7 +45,7 @@ main = do
 
   -- putStrLn "---------------------------------"
   -- -- ["A", "B", "C"] --> ["A1", "B2", "C3"]
-  -- print $ nonT 0 nonTerminals
+  -- print $ generateINonTerms 0 nonTerminals
   -- putStrLn "---------------------------------"
   
   -- -- rules to [(N, [N right sides])] -- bude potreba pro KA asi
@@ -57,32 +57,33 @@ main = do
   -- print $ splitR "A" "aaB"
 
 
-  -- putStrLn "---------------------------------"
-  -- -- vygenerovani novych neterminalu pro 3.2 gramatiku
-  -- print nonTerminals
-  -- let newNonTerminals = getNewNonTerminals neededNonTerminals nonTerminals
-
-
 -- transform grammar to N->tN form
 transform g = do
   -- let neededNonTerminals = length [(x,z) | x <- nonTerminals g, let z = [y | (r,y) <- rules g, r == x]]
   let neededNonTerminals = length $ rules g
 
   -- vygenerovani novych neterminalu pro 3.2 gramatiku
-  let newNonTerminals = getNewNonTerminals neededNonTerminals $ nonTerminals g
-  print newNonTerminals
+  let tmpNonTerms = getNewNonTerminals neededNonTerminals $ nonTerminals g
+  print tmpNonTerms
   putStrLn "---------------------------------"
   print $ rules g
+  -- TODO: optimalizovat pocet
+  let newNonTerms = [reverse $ tail $ generateINonTerms (fst x) (snd x) | 
+                     x <- zip [if (length $ snd r) > 1 
+                     	       then (length $ snd r) - 1 
+                     	       else 1  | r <- rules g]
+                              tmpNonTerms]
+  print $ concat [splitRule r | r <- zip newNonTerms $ rules g]
 
-  --TODO: generate NT1..NTn
-  print [splitRule r | r <- zip newNonTerminals (rules g)]
-  print $ nonT 5 "H"
--- start symbol -> right side -> [(start, right side)] :: A -> xB
+
+-- start symbol -> right side -> [(start, right side)] :: A -> aB
 -- splitRule :: String -> String -> [(String, String)]
 -- splitRule :: String -> (String, String) -> String
-splitRule (h,(s,(x:xs))) = if length xs > 1
-                           then [(h,h)] -- [(s,x++(head h))]++splitRule (tail h,(head $ tail h,xs))
-                           else [(h,xs)] -- (s++"->"++[x]++xs)    h++s++[x]++xs 
+splitRule ([],(s,(x)))    = [(s,x)]
+splitRule (h, (s,(x:xs))) = [(s,[x]++(head h))]++splitRule (tail h,(head h,xs)) 
+	-- if length xs > 1
+ --                           then [(h,s)] -- [(s,x++(head h))]++splitRule (tail h,(head $ tail h,xs))
+ --                           else [(h,xs)] -- (s++"->"++[x]++xs)    h++s++[x]++xs 
 
 
 -- generate i non terminals that are not already present in xs
@@ -90,7 +91,7 @@ getNewNonTerminals :: Int -> [String] -> [String]
 getNewNonTerminals 0 xs = []
 getNewNonTerminals i xs = nonternimal++getNewNonTerminals (i-1) (xs++nonternimal)
   where
-  	nonternimal = [generateNonTerminal [] xs]
+    nonternimal = [generateNonTerminal [] xs]
 
 -- generate NT which is not present in xs
 generateNonTerminal :: String -> [String] -> String
@@ -100,9 +101,9 @@ generateNonTerminal prev xs = if elem prev xs
                               else prev
 
 
-nonT :: Int -> String -> [String]
-nonT 0 _ = []
-nonT i x = list++(nonT j x)
+generateINonTerms :: Int -> String -> [String]
+generateINonTerms 0 x = []
+generateINonTerms i x = list++(generateINonTerms j x)
   where
     j = (getLastI list) - 1
     list = [x ++ (show i) :: String]
