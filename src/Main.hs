@@ -8,6 +8,7 @@ import System.Exit
 import Data.Char
 import Data.List
 import Data.List.Split
+import Data.Function
 import Control.Monad
 
 import Types
@@ -26,7 +27,8 @@ main = do
   let nonTerminals = splitOn "," $ head fileLines
   let terminals = splitOn "," $ head $ drop 1 fileLines
   let start = head $ head $ drop 2 fileLines
-  let rules = [(head splited, last splited) | x <- drop 3 fileLines, let splited = splitOn "->" x]
+  let rules = sortBy (on compare fst) [(head splited, last splited) |
+                                       x <- drop 3 fileLines, let splited = splitOn "->" x]
 
   -- Validate non terminals and terminals in rules
   when (length [fst x | x <- rules, not $ elem (fst x) nonTerminals] > 0) $ raise "Rules contain unknown non-terminal"
@@ -40,51 +42,64 @@ main = do
 
   case head args of "-i" -> printGrammar g
                     "-1" -> transform g
-                    "-2" -> print $ head args
+                    "-2" -> print $ head args -- TODO
                     _    -> raise "Unknown argument..."
-
-  -- putStrLn "---------------------------------"
-  -- -- ["A", "B", "C"] --> ["A1", "B2", "C3"]
-  -- print $ generateINonTerms 0 nonTerminals
-  -- putStrLn "---------------------------------"
-  
-  -- -- rules to [(N, [N right sides])] -- bude potreba pro KA asi
-  -- print [(x,z) | x <- nonTerminals, let z = [y | (r,y) <- rules, r == x]]
-  -- putStrLn "---------------------------------"
-  -- -- kaslu na setreni znaky zatim
-  -- -- let neededNonTerminals = length  [(x,z) | x <- nonTerminals, let z = [y | (r,y) <- rules, r == x], length z > 1]
-  -- let neededNonTerminals = length [(x,z) | x <- nonTerminals, let z = [y | (r,y) <- rules, r == x]]
-  -- print $ splitR "A" "aaB"
 
 
 -- transform grammar to N->tN form
 transform g = do
-  -- let neededNonTerminals = length [(x,z) | x <- nonTerminals g, let z = [y | (r,y) <- rules g, r == x]]
-  let neededNonTerminals = length $ rules g
+  -- group rules to determine same start non-terminal for different right sides
+  let tmpGrp = [(x,z) | x <- nonTerminals g, let z = [y | (r,y) <- rules g, r == x]]
+  -- generate list of new non-terminals (named after left side non-terminal) 
+  -- for each right side
+  let nonTermCnt = [z | x <- tmpGrp, let z = [if (length y) > 2
+                                              then (length y) - 2
+                                              else 0 | y <- snd x]]
+  let tmpNonTerms = [reverse $ generateINonTerms (fst x) (snd x) |
+                     x <- zip [sum x | x <- nonTermCnt] [fst x | x <- tmpGrp]]
+  let newNonTerms = join [cutNonTerminals (fst x) (snd x) | x <- zip nonTermCnt tmpNonTerms]
 
-  -- vygenerovani novych neterminalu pro 3.2 gramatiku
-  let tmpNonTerms = getNewNonTerminals neededNonTerminals $ nonTerminals g
-  print tmpNonTerms
-  putStrLn "---------------------------------"
-  print $ rules g
-  -- TODO: optimalizovat pocet
-  let newNonTerms = [reverse $ tail $ generateINonTerms (fst x) (snd x) | 
-                     x <- zip [if (length $ snd r) > 1 
-                     	       then (length $ snd r) - 1 
-                     	       else 1  | r <- rules g]
-                              tmpNonTerms]
-  print $ concat [splitRule r | r <- zip newNonTerms $ rules g]
+  let newRules = concat [splitRule x | x <- zip newNonTerms $ rules g]
+
+  let newG = Grammar ((nonTerminals g)++(join newNonTerms)) (terminals g) newRules (start g)
+  printGrammar newG
 
 
--- start symbol -> right side -> [(start, right side)] :: A -> aB
--- splitRule :: String -> String -> [(String, String)]
--- splitRule :: String -> (String, String) -> String
+  -- -- let neededNonTerminals = length [(x,z) | x <- nonTerminals g, let z = [y | (r,y) <- rules g, r == x]]
+  -- let neededNonTerminals = length $ rules g
+
+  -- -- vygenerovani novych neterminalu pro 3.2 gramatiku
+  -- let tmpNonTerms = getNewNonTerminals neededNonTerminals $ nonTerminals g
+  -- print tmpNonTerms
+  -- putStrLn "---------------------------------"
+  -- print $ rules g
+  -- -- TODO: optimalizovat pocet
+  -- let newNonTerms = [reverse $ tail $ generateINonTerms (fst x) (snd x) | 
+  --                    x <- zip [if (length $ snd r) > 1 
+  --                              then (length $ snd r) - 1 
+  --                              else 1  | r <- rules g]
+  --                             tmpNonTerms]
+  -- print $ concat [splitRule r | r <- zip newNonTerms $ rules g]
+
+--------------------------------------------------------------------------------------------------
+
+------------------------------------------------
+-- cut newly generated nonterminals to chunks --
+------------------------------------------------
+cutNonTerminals :: [Int] -> [String] -> [[String]]
+cutNonTerminals [] _ = []
+cutNonTerminals i n  = [getNHead (head i) n]++cutNonTerminals (tail i) (drop (head i) n)
+
+-----------------------------------
+-- get N times head from list xs --
+-----------------------------------
+getNHead :: Int -> [String] -> [String]
+getNHead 0 xs = []
+getNHead n xs = [head xs]++getNHead (n-1) (tail xs)
+
+splitRule :: ([String],(String, String)) -> [(String, String)]
 splitRule ([],(s,(x)))    = [(s,x)]
-splitRule (h, (s,(x:xs))) = [(s,[x]++(head h))]++splitRule (tail h,(head h,xs)) 
-	-- if length xs > 1
- --                           then [(h,s)] -- [(s,x++(head h))]++splitRule (tail h,(head $ tail h,xs))
- --                           else [(h,xs)] -- (s++"->"++[x]++xs)    h++s++[x]++xs 
-
+splitRule (h, (s,(x:xs))) = [(s,[x]++(head h))]++splitRule (tail h,(head h,xs))
 
 -- generate i non terminals that are not already present in xs
 getNewNonTerminals :: Int -> [String] -> [String]

@@ -1,7 +1,8 @@
-A,B
+A,B,C
 a,b,c
 A
-A->aaB
+B->bC
+A->abaB
 A->ccB
-B->bB
-B->#
+C->aC
+C->#
