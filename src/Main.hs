@@ -13,34 +13,38 @@ import Control.Monad
 
 import Types
 
+---------------------------------------------------------------
+-- read input, parse it to grammar and execute argument code --
+---------------------------------------------------------------
 main :: IO ()
 main = do
   args <- getArgs
   case length args of 0 -> raise "Program requires aruments"
-                      1 -> if validateArgs args 
-                           then putStr "" 
-                           else raise $ "Invalid argument "++head args
-                      2 -> if validateArgs args 
-                           then putStr "" 
-                           else raise $ "Invalid argument "++head args
+                      1 -> unless (validateArgs args) $ raise $ "Invalid argument "++head args
+                      2 -> unless (validateArgs args) $ raise $ "Invalid argument "++head args
                       _ -> raise "Only two arguments at the same time are supported"
 
   f <- if length args > 1 then readFile $ last args else getContents 
   let fileLines = lines f
   
   let nonTerminals = splitOn "," $ head fileLines
-  let terminals = splitOn "," $ head $ drop 1 fileLines
-  let start = head $ head $ drop 2 fileLines
+  let terminals = splitOn "," $ fileLines !! 1
+  let start = head $ fileLines !! 2
   let rules = sortBy (on compare fst) [(head splited, last splited) |
                                        x <- drop 3 fileLines, let splited = splitOn "->" x]
 
   -- Validate non terminals and terminals in rules
-  when (length [fst x | x <- rules, not $ elem (fst x) nonTerminals] > 0) $ 
-       raise "Rules contain unknown non-terminal"
-  unless (elem [start] nonTerminals) $ raise "Start symbol must be non-terminal"
-  -- when length [t | t <- terminals, elem t ['a'..'z']] > 0 $ raise "Terminal symbols contain prohibited symbol"
-  -- unless (validateTerms terminals [snd x | x <- rules]) $ raise "Rules contain unknown terminal"
-
+  unless (null [x | x <- terminals, head x `notElem` ['a'..'z']]) $ 
+       raise "Terminals must be from [a..z]"
+  unless (null [x | x <- nonTerminals, head x `notElem` ['A'..'Z']]) $ 
+       raise "Non-terminals must be from [A..Z]"
+  unless (null [fst x | x <- rules, fst x `notElem`  nonTerminals]) $ 
+       raise "Rules contain unknown non-terminal on left side"
+  unless (null [x | x <- nonTerminals, x `notElem` [fst x | x <- rules]]) $
+       raise "Non-terminals contain unused symbol"
+  unless ([start] `elem` nonTerminals) $ raise "Start symbol must be non-terminal"
+  unless (validateRightSide (terminals,nonTerminals) rules) $ 
+       raise "Right side of rule must be in format A->xB, where x belongs to terminals"
   -- end of validation
 
   let g = Grammar nonTerminals terminals rules start
@@ -49,6 +53,27 @@ main = do
                     "-1" -> transformG g False
                     "-2" -> transformG g True
                     _    -> raise "Unknown argument..."
+
+-----------------------------------------------------------
+-- check if right side of rule is xB where x is terminal --
+-----------------------------------------------------------
+validateRightSide :: ([String],[String]) -> [(String, String)] -> Bool
+validateRightSide _ []                               = True
+validateRightSide (terms,nonTerms) rules | t && nT   = validateRightSide (terms,nonTerms) 
+                                                                         (tail rules)
+                                         | otherwise = False
+  where rule = snd $ head rules
+        t    = checkTerms terms $ init rule
+        nT   = checkTerms nonTerms [last rule]
+
+------------------------------------
+-- check if x is present in terms --
+------------------------------------
+checkTerms :: [String] -> String -> Bool
+checkTerms _ []                            = True
+checkTerms terms (x:xs) | [x] `elem` terms = checkTerms terms xs
+                        | x == '#'         = checkTerms terms xs
+                        | otherwise        = False
 
 ---------------------------------------------------------------
 -- transform grammar to A->aB form and then to FSM if needed --
@@ -59,15 +84,15 @@ transformG g fsm = do
   let tmpGrp = [(x,z) | x <- nonTerminals g, let z = [y | (r,y) <- rules g, r == x]]
   -- generate list of new non-terminals (named after left side non-terminal) 
   -- for each right side
-  let nonTermCnt = [z | x <- tmpGrp, let z = [if (length y) > 2
-                                              then (length y) - 2
+  let nonTermCnt = [z | x <- tmpGrp, let z = [if length y > 2
+                                              then length y - 2
                                               else 0 | y <- snd x]]
-  let tmpNonTerms = [reverse $ generateINonTerms (fst x) (snd x) |
+  let tmpNonTerms = [reverse $ uncurry generateINonTerms x |
                      x <- zip [sum x | x <- nonTermCnt] [fst x | x <- tmpGrp]]
-  let newNonTerms = join [cutNonTerminals (fst x) (snd x) | x <- zip nonTermCnt tmpNonTerms]
+  let newNonTerms = join [uncurry cutNonTerminals x | x <- zip nonTermCnt tmpNonTerms]
   -- split rules to A->aB form with use of new non-terminals
   let newRules = concat [splitRule x | x <- zip newNonTerms $ rules g]
-  let newG = Grammar ((nonTerminals g)++(join newNonTerms)) (terminals g) newRules (start g)
+  let newG = Grammar (nonTerminals g ++ join newNonTerms) (terminals g) newRules (start g)
   
   if fsm
   then printFSM $ transformFSM newG
@@ -77,32 +102,33 @@ transformG g fsm = do
 -- transform grammar to FSM --
 ------------------------------
 transformFSM :: Grammar -> FSM
-transformFSM g  = FSM states delta begin finals
-  where states  = removeDuplicates $ [fst x | x <- delta]++[snd $ snd x | x <- delta]
-        delta   = sortBy (on compare fst) 
-                         (convertRules pattern [r | r <- rules g, not(snd r == "#")])
-        begin   = snd $ head [x | x <- pattern, fst x == [start g]]
-        finals  = getFinalStates pattern (rules g)
-        pattern = getDictionary (rules g) [] 
+transformFSM g   = FSM states delta begin finals
+  where states   = removeDuplicates $ [fst x | x <- delta]++[snd $ snd x | x <- delta]
+        delta    = sortBy (on compare fst) newRules
+        begin    = snd $ head [x | x <- map, fst x == [start g]]
+        finals   = getFinalStates map (rules g)
+        map      = getDictionary (rules g) []
+        newRules = convertRules map [r | r <- rules g, snd r /= "#"]
 
-
+----------------------------------------------
+-- convert grammar rules to FSM delta rules --
+----------------------------------------------
 convertRules :: [(String, Int)] -> [(String, String)] -> [(Int, (Char, Int))]
 convertRules _ []          = []
--- convertRules pattern rules = head rules ++ convertRules pattern (tail rules)
-convertRules pattern rules = [(lNumber, (term, rNumber))]++convertRules pattern (tail rules)
+convertRules map rules = (lNumber, (term, rNumber)) : convertRules map (tail rules)
   where rule    = head rules
-        lNumber = snd $ head [x | x <- pattern, fst x == fst rule]
+        lNumber = snd $ head [x | x <- map, fst x == fst rule]
         term    = head $ snd rule
-        rNumber = snd $ head [x | x <- pattern, fst x == (tail $ snd rule)]
+        rNumber = snd $ head [x | x <- map, fst x == tail (snd rule)]
 
 --------------------------
 -- get FSM final states --
 --------------------------
 getFinalStates :: [(String, Int)] -> [(String, String)] -> [Int]
 getFinalStates _       []                      = []
-getFinalStates pattern rules | snd rule == "#" = s++getFinalStates pattern (tail rules)
-                             | otherwise       = getFinalStates pattern (tail rules)
-  where s    = [snd $ head [x | x <- pattern, fst x == fst rule]]
+getFinalStates map rules | snd rule == "#" = s++getFinalStates map (tail rules)
+                             | otherwise       = getFinalStates map (tail rules)
+  where s    = [snd $ head [x | x <- map, fst x == fst rule]]
         rule = head rules
 
 -------------------------------------------------------------------
@@ -110,10 +136,10 @@ getFinalStates pattern rules | snd rule == "#" = s++getFinalStates pattern (tail
 -------------------------------------------------------------------
 getDictionary :: [(String, String)] -> [(String, Int)] -> [(String, Int)]
 getDictionary [] fsm = fsm
-getDictionary g fsm  = if elem (fst $ head g) [fst x | x <- fsm]
+getDictionary g fsm  = if fst (head g) `elem` [fst x | x <- fsm]
                        then getDictionary (tail g) fsm
                        else getDictionary (tail g) (fsm++[(fst $ head g,i)])
-  where list = if fsm == [] then [] else ["a"++(show $ snd x) :: String | x <- fsm]
+  where list = if null fsm then [] else ["a"++show (snd x) :: String | x <- fsm]
         i    = getLastI list + 1
 
 ------------------------------------------------
@@ -121,29 +147,29 @@ getDictionary g fsm  = if elem (fst $ head g) [fst x | x <- fsm]
 ------------------------------------------------
 cutNonTerminals :: [Int] -> [String] -> [[String]]
 cutNonTerminals [] _ = []
-cutNonTerminals i n  = [getNHead (head i) n]++cutNonTerminals (tail i) (drop (head i) n)
+cutNonTerminals i n  = getNHead (head i) n : cutNonTerminals (tail i) (drop (head i) n)
 
 -----------------------------------
 -- get N times head from list xs --
 -----------------------------------
 getNHead :: Int -> [String] -> [String]
 getNHead 0 xs = []
-getNHead n xs = [head xs]++getNHead (n-1) (tail xs)
+getNHead n xs = head xs : getNHead (n-1) (tail xs)
 
 ------------------------------------------
 -- remove duplicated elements from list --
 ------------------------------------------
 removeDuplicates :: [Int] -> [Int]
-removeDuplicates []                 = []
-removeDuplicates (x:xs) | elem x xs = removeDuplicates xs
-                        | otherwise = x : removeDuplicates xs
+removeDuplicates []                   = []
+removeDuplicates (x:xs) | x `elem` xs = removeDuplicates xs
+                        | otherwise   = x : removeDuplicates xs
 
 ------------------------------------------------
 -- split rule (A->aaB) to [(A->aA1),(A1->aB)] --
 ------------------------------------------------
 splitRule :: ([String],(String, String)) -> [(String, String)]
 splitRule ([],(s,x))      = [(s,x)]
-splitRule (h, (s,x:xs)) = [(s,[x]++head h)]++splitRule (tail h,(head h,xs))
+splitRule (h, (s,x:xs)) = (s,x : head h) : splitRule (tail h,(head h,xs))
 
 -----------------------------------------------------------------
 -- generate i non terminals that are not already present in xs --
@@ -159,7 +185,7 @@ getNewNonTerminals i xs = nonternimal++getNewNonTerminals (i-1) (xs++nonternimal
 --------------------------------------------
 generateNonTerminal :: String -> [String] -> String
 generateNonTerminal [] xs   = generateNonTerminal "A" xs
-generateNonTerminal prev xs = if elem prev xs
+generateNonTerminal prev xs = if prev `elem` xs
                               then generateNonTerminal [succ $ head prev] xs
                               else prev
 
@@ -170,7 +196,7 @@ generateINonTerms :: Int -> String -> [String]
 generateINonTerms 0 x = []
 generateINonTerms i x = list++generateINonTerms j x
   where
-    j = (getLastI list) - 1
+    j = getLastI list - 1
     list = [x ++ show i :: String]
 
 ---------------------------------------------------
@@ -215,10 +241,3 @@ printFSM fsm = do
                                [fst $ snd x]++","++
                                (show $ snd $ snd x :: String) |
                                x <- delta fsm]
-
-
--- validateTerms :: [String] -> [String] -> Bool
--- validateTerms xs (y:ys) = if elem y xs || head y == '#'
---                           then validateTerms xs ys 
---                           else (if isUpper $ head y then validateTerms xs ys else False) 
--- validateTerms xs []     = True

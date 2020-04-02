@@ -2,7 +2,7 @@ A,B,C
 a,b,c
 A
 B->bC
-A->abaB
+A->aaB
 A->ccB
 C->aC
 C->#
