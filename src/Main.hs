@@ -5,9 +5,9 @@
 
 import System.Environment
 import System.Exit
+import Data.Maybe
 import Data.Char
 import Data.List
-import Data.List.Split
 import Data.Function
 import Control.Monad
 
@@ -19,32 +19,31 @@ import Types
 main :: IO ()
 main = do
   args <- getArgs
-  case length args of 0 -> raise "Program requires aruments"
-                      1 -> unless (validateArgs args) $ raise $ "Invalid argument "++head args
-                      2 -> unless (validateArgs args) $ raise $ "Invalid argument "++head args
-                      _ -> raise "Only two arguments at the same time are supported"
+  case length args of 0 -> error "Program requires aruments"
+                      1 -> unless (validateArgs args) $ error $ "Invalid argument "++head args
+                      2 -> unless (validateArgs args) $ error $ "Invalid argument "++head args
+                      _ -> error "Only two arguments at the same time are supported"
 
   f <- if length args > 1 then readFile $ last args else getContents 
   let fileLines = lines f
   
-  let nonTerminals = splitOn "," $ head fileLines
-  let terminals = splitOn "," $ fileLines !! 1
+  let nonTerminals = splitOn ',' $ head fileLines
+  let terminals = splitOn ',' $ fileLines !! 1
   let start = head $ fileLines !! 2
-  let rules = sortBy (on compare fst) [(head splited, last splited) |
-                                       x <- drop 3 fileLines, let splited = splitOn "->" x]
+  let rules = sortBy (on compare fst) [cutRule r | r <- drop 3 fileLines]
 
   -- Validate non terminals and terminals in rules
   unless (null [x | x <- terminals, head x `notElem` ['a'..'z']]) $ 
-       raise "Terminals must be from [a..z]"
+       error "Terminals must be from [a..z]"
   unless (null [x | x <- nonTerminals, head x `notElem` ['A'..'Z']]) $ 
-       raise "Non-terminals must be from [A..Z]"
+       error "Non-terminals must be from [A..Z]"
   unless (null [fst x | x <- rules, fst x `notElem`  nonTerminals]) $ 
-       raise "Rules contain unknown non-terminal on left side"
+       error "Rules contain unknown non-terminal on left side"
   unless (null [x | x <- nonTerminals, x `notElem` [fst x | x <- rules]]) $
-       raise "Non-terminals contain unused symbol"
-  unless ([start] `elem` nonTerminals) $ raise "Start symbol must be non-terminal"
+       error "Non-terminals contain unused symbol"
+  unless ([start] `elem` nonTerminals) $ error "Start symbol must be non-terminal"
   unless (validateRightSide (terminals,nonTerminals) rules) $ 
-       raise "Right side of rule must be in format A->xB, where x belongs to terminals"
+       error "Right side of rule must be in format A->xB, where x belongs to terminals"
   -- end of validation
 
   let g = Grammar nonTerminals terminals rules start
@@ -52,7 +51,31 @@ main = do
   case head args of "-i" -> printGrammar g
                     "-1" -> transformG g False
                     "-2" -> transformG g True
-                    _    -> raise "Unknown argument..."
+                    _    -> error "Unknown argument..."
+
+-----------------------------------------
+-- split str with delimiter into array --
+-----------------------------------------
+splitOn :: Char -> String -> [String]
+splitOn _ []                      = []
+splitOn delimiter str | pos > 0   = [fst splitted]++(splitOn delimiter (tail $ snd splitted))
+                      | pos == 0  = splitOn delimiter (tail str)
+                      | otherwise = [str]
+  where pos = case elemIndex delimiter str of Just i  -> i
+                                              Nothing -> -1
+        splitted = splitAt pos str
+
+-----------------------------------------------
+-- search "->" in rule and split it into two --
+-----------------------------------------------
+cutRule :: String -> (String, String)
+cutRule str | pos1 + 1 == pos2 = (fst splitted, drop 2 $ snd splitted)
+            | otherwise        = error "Unknown rule format"
+  where pos1 = case elemIndex '-' str of Just i  -> i
+                                         Nothing -> error "Unknown rule format"
+        pos2 = case elemIndex '>' str of Just i  -> i
+                                         Nothing -> error "Unknown rule format"
+        splitted = splitAt pos1 str
 
 -----------------------------------------------------------
 -- check if right side of rule is xB where x is terminal --
@@ -205,12 +228,6 @@ generateINonTerms i x = list++generateINonTerms j x
 getLastI :: [String] -> Int
 getLastI [] = 0
 getLastI x  = read(tail $ last x) :: Int
-
-------------------------------------------
--- raise error message and exit program --
-------------------------------------------
-raise :: String -> IO a
-raise str = error str
 
 --------------------------------
 -- validate program arguments --
