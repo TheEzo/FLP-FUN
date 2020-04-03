@@ -5,7 +5,7 @@
 # Rok:     2020
 
 test_count=2
-err_test_count=4
+err_test_count=6
 
 make > /dev/null
 
