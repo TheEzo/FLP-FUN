@@ -4,7 +4,7 @@
 # Autor:   Tomas Willaschek
 # Rok:     2020
 
-test_count=2
+test_count=3
 err_test_count=6
 
 make > /dev/null
@@ -17,7 +17,7 @@ do
   do
     # test read file
     ./plg-2-nka -"${j}" test/test"${i}".in > output
-    diff output test/test"${i}"-"${j}".out > /dev/null
+    diff output test/test"${i}"-"${j}".out &> /dev/null
     if [ $? -eq 0 ]
     then 
       printf "."
@@ -27,7 +27,7 @@ do
     # test read stdin
 
     cat test/test"${i}".in | ./plg-2-nka -"${j}" > output
-    diff output test/test"${i}"-"${j}".out > /dev/null
+    diff output test/test"${i}"-"${j}".out &> /dev/null
     if [ $? -eq 0 ]
     then 
       printf "."

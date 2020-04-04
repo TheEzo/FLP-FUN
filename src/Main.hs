@@ -6,7 +6,6 @@
 import System.Environment
 import System.Exit
 import Data.Maybe
-import Data.Char
 import Data.List
 import Data.Function
 import Control.Monad
@@ -58,11 +57,10 @@ main = do
 -----------------------------------------
 splitOn :: Char -> String -> [String]
 splitOn _ []                      = []
-splitOn delimiter str | pos > 0   = [fst splitted]++(splitOn delimiter (tail $ snd splitted))
+splitOn delimiter str | pos > 0   = fst splitted : splitOn delimiter (tail $ snd splitted)
                       | pos == 0  = splitOn delimiter (tail str)
                       | otherwise = [str]
-  where pos = case elemIndex delimiter str of Just i  -> i
-                                              Nothing -> -1
+  where pos      = fromMaybe (-1) (elemIndex delimiter str)
         splitted = splitAt pos str
 
 -----------------------------------------------
@@ -71,10 +69,8 @@ splitOn delimiter str | pos > 0   = [fst splitted]++(splitOn delimiter (tail $ s
 cutRule :: String -> (String, String)
 cutRule str | pos1 + 1 == pos2 = (fst splitted, drop 2 $ snd splitted)
             | otherwise        = error "Unknown rule format"
-  where pos1 = case elemIndex '-' str of Just i  -> i
-                                         Nothing -> error "Unknown rule format"
-        pos2 = case elemIndex '>' str of Just i  -> i
-                                         Nothing -> error "Unknown rule format"
+  where pos1 = fromMaybe (error "Unknown rule format") (elemIndex '-' str)
+        pos2 = fromMaybe (error "Unknown rule format") (elemIndex '>' str)
         splitted = splitAt pos1 str
 
 -----------------------------------------------------------
