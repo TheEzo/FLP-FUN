@@ -30,5 +30,7 @@ Spuštění testů:
 ```make test```
 
 ## Testy
-Archív obsahuje sadu základních testů, které testují, zda program při korektním vstupu vypíše korektní výstup, čtení vstupu ze souroru a ze stdin.
+Archív obsahuje sadu základních testů, které testují, zda program při korektním vstupu vypíše korektní výstup, čtení vstupu ze souroru a ze stdin. Dále jsou zahrnuty testy s chybným vstupem, u kterých se očekává, že program skončí nenulovým exit kódem.
+Tyto testy jsou celé řízeny skriptem ```test.sh```, který se nachází v rootu archívu.
+
 Výstup testů je velmi podobný testům v pythonu, tedy '.' značí výsledek OK, 'F' značí error.
