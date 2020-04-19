@@ -31,18 +31,18 @@ main = do
   let start = head $ fileLines !! 2
   let rules = sortBy (on compare fst) [cutRule r | r <- drop 3 fileLines]
 
-  -- Validate non terminals and terminals in rules
-  unless (null [x | x <- terminals, head x `notElem` ['a'..'z']]) $ 
-       error "Terminals must be from [a..z]"
-  unless (null [x | x <- nonTerminals, head x `notElem` ['A'..'Z']]) $ 
-       error "Non-terminals must be from [A..Z]"
-  unless (null [fst x | x <- rules, fst x `notElem`  nonTerminals]) $ 
-       error "Rules contain unknown non-terminal on left side"
-  unless (null [x | x <- nonTerminals, x `notElem` [fst x | x <- rules]]) $
-       error "Non-terminals contain unused symbol"
-  unless ([start] `elem` nonTerminals) $ error "Start symbol must be non-terminal"
-  unless (validateRightSide (terminals,nonTerminals) rules) $ 
-       error "Right side of rule must be in format A->xB, where x belongs to terminals"
+  -- -- Validate non terminals and terminals in rules
+  -- unless (null [x | x <- terminals, head x `notElem` ['a'..'z']]) $ 
+  --      error "Terminals must be from [a..z]"
+  -- unless (null [x | x <- nonTerminals, head x `notElem` ['A'..'Z']]) $ 
+  --      error "Non-terminals must be from [A..Z]"
+  -- unless (null [fst x | x <- rules, fst x `notElem`  nonTerminals]) $ 
+  --      error "Rules contain unknown non-terminal on left side"
+  -- unless (null [x | x <- nonTerminals, x `notElem` [fst x | x <- rules]]) $
+  --      error "Non-terminals contain unused symbol"
+  -- unless ([start] `elem` nonTerminals) $ error "Start symbol must be non-terminal"
+  -- unless (validateRightSide (terminals,nonTerminals) rules) $ 
+  --      error "Right side of rule must be in format A->xB, where x belongs to terminals"
   -- end of validation
 
   let g = Grammar nonTerminals terminals rules start
@@ -103,9 +103,7 @@ transformG g fsm = do
   let tmpGrp = [(x,z) | x <- nonTerminals g, let z = [y | (r,y) <- rules g, r == x]]
   -- generate list of new non-terminals (named after left side non-terminal) 
   -- for each right side
-  let nonTermCnt = [z | x <- tmpGrp, let z = [if length y > 2
-                                              then length y - 2
-                                              else 0 | y <- snd x]]
+  let nonTermCnt = [y | x <- tmpGrp, let y = [getNTCount z (terminals g) | z <- snd x]]
   let tmpNonTerms = [reverse $ uncurry generateINonTerms x |
                      x <- zip [sum x | x <- nonTermCnt] [fst x | x <- tmpGrp]]
   let newNonTerms = join [uncurry cutNonTerminals x | x <- zip nonTermCnt tmpNonTerms]
@@ -113,21 +111,67 @@ transformG g fsm = do
   let newRules = concat [splitRule x | x <- zip newNonTerms $ rules g]
   let newG = Grammar (nonTerminals g ++ join newNonTerms) (terminals g) newRules (start g)
   
+
+  -- printGrammar newG
+  -- print "----------"
+
+  -- let epsRule  = getEpsR $ rules newG
+  -- let map = getDictionary (rules newG++[epsRule]) []
+  -- let pre = preprocesRules newRules (fst epsRule, (terminals g))
+
+  -- print $ convertRules map (preprocesRules [r | r <- rules newG, snd r /= "#"] (fst epsRule, terminals g))
+
+
   if fsm
   then printFSM $ transformFSM newG
   else printGrammar newG
+
+----------------------------------------
+-- find or create epsilon rule (A->#) --
+----------------------------------------
+getEpsR :: [(String, String)] -> (String, String)
+getEpsR [] = (head $ getNewNonTerminals 1 [], "#")
+getEpsR allR | length rs > 0 = head rs
+             | otherwise     = (head $ getNewNonTerminals 1 [fst r | r <- allR], "#")
+  where rs = [r | r <- allR, snd r == "#"]  
 
 ------------------------------
 -- transform grammar to FSM --
 ------------------------------
 transformFSM :: Grammar -> FSM
 transformFSM g   = FSM states delta begin finals
-  where states   = removeDuplicates $ [fst x | x <- delta]++[snd $ snd x | x <- delta]
+  where states   = sort $ removeDuplicates $ [fst x | x <- delta]++[snd $ snd x | x <- delta]
         delta    = sortBy (on compare fst) newRules
         begin    = snd $ head [x | x <- map, fst x == [start g]]
-        finals   = getFinalStates map (rules g)
-        map      = getDictionary (rules g) []
-        newRules = convertRules map [r | r <- rules g, snd r /= "#"]
+        finals   = removeDuplicates $ getFinalStates map (rules g ++ [epsRule])
+        map      = getDictionary (rules g ++ [epsRule]) []
+        newRules = convertRules map rulesPre
+        rulesPre = preprocesRules [r | r <- rules g, snd r /= "#"] (fst epsRule, terminals g)
+        epsRule  = getEpsR $ rules g
+
+------------------------------------------------------------
+-- remake rules A->a into A->aA1 where A1 is epsilon rule --
+------------------------------------------------------------
+preprocesRules :: [(String,String)] -> (String,[String]) -> [(String,String)]
+preprocesRules [] _ = []
+preprocesRules (r:rs) (epsNT,terms) | isSimple (snd r) terms = (fst r, snd r ++ epsNT) : preprocesRules rs (epsNT,terms)
+                                    | otherwise              = r : preprocesRules rs (epsNT,terms)
+
+--------------------------------------------------------------------------------
+-- calculate how many new non-terminals will be needed fro right side of rule --
+--------------------------------------------------------------------------------
+getNTCount :: String -> [String] -> Int
+getNTCount rSide terms | isSimple rSide terms = (length rSide) - 1
+                       | rSide == "#" = 0
+                       | otherwise = length rSide - 2
+
+--------------------------------------------------
+-- determine if rule is simple (only terminals) --
+--------------------------------------------------  
+isSimple :: String -> [String] -> Bool
+isSimple [] _ = True
+isSimple (t:ts) terms | [t] `elem` terms = isSimple ts terms
+                      | otherwise        = False
 
 ----------------------------------------------
 -- convert grammar rules to FSM delta rules --
@@ -145,7 +189,7 @@ convertRules map rules = (lNumber, (term, rNumber)) : convertRules map (tail rul
 --------------------------
 getFinalStates :: [(String, Int)] -> [(String, String)] -> [Int]
 getFinalStates _       []                      = []
-getFinalStates map rules | snd rule == "#" = s++getFinalStates map (tail rules)
+getFinalStates map rules     | snd rule == "#" = s++getFinalStates map (tail rules)
                              | otherwise       = getFinalStates map (tail rules)
   where s    = [snd $ head [x | x <- map, fst x == fst rule]]
         rule = head rules
