@@ -26,7 +26,7 @@ main = do
   f <- if length args > 1 then readFile $ last args else getContents 
   let fileLines = lines f
   
-  let nonTerminals = splitOn ',' $ head fileLines
+  let nonTerminals = sort $ splitOn ',' $ head fileLines
   let terminals = splitOn ',' $ fileLines !! 1
   let start = head $ fileLines !! 2
   let rules = sortBy (on compare fst) [cutRule r | r <- drop 3 fileLines]
@@ -115,13 +115,28 @@ transformG g fsm = do
   let updatedNT = [x | x <- nonTerminals g, x `elem` usedNTerms]
   -- remove unused terminals from list of Ts
   let usedTerms = [t | t <- terminals g, t `elem` getRuleTerms newRules]
-  -- crop not linked non-terminals from end of right sides
-  let finalRules = modifyRules newRules [fst x | x <- newRules]
-  let newG = Grammar (updatedNT ++ join newNonTerms) usedTerms finalRules (start g)
-  
+  let newG = Grammar (updatedNT ++ join newNonTerms) usedTerms newRules (start g)
+
   if fsm
   then printFSM $ transformFSM newG
   else printGrammar newG
+
+-------------------------------------------
+-- update map with missing non-terminals --
+-------------------------------------------
+updateDict :: [(String, Int)] -> [String] -> [(String, Int)]
+updateDict rules [] = rules
+updateDict rules (x:xs) | exists    = updateDict rules xs
+                        | otherwise = updateDict (rules++[(x, num)]) xs
+  where exists = length [r | r <- rules, fst r == x] > 0
+        num    = getNumber [snd r | r <- rules] 1
+
+-------------------------------------------
+-- get number that doesn't exists in arr --
+-------------------------------------------
+getNumber :: [Int] -> Int -> Int
+getNumber arr i | i `elem` arr = getNumber arr (i+1)
+                | otherwise    = i
 
 ------------------------------
 -- transform grammar to FSM --
@@ -132,11 +147,14 @@ transformFSM g    = FSM states delta begin finals
         allStates = begin : [fst x | x <- delta]++[snd $ snd x | x <- delta] ++ finals
         delta     = sortBy (on compare fst) newRules
         begin     = snd $ head [x | x <- map, fst x == [start g]]
-        finals    = removeDuplicates $ getFinalStates map (rules g ++ [epsRule])
-        map       = getDictionary (rules g ++ [epsRule]) []
+        epsRs     = [r | r <- (rules g), snd r == "#"]
+        finals    = sort $ removeDuplicates $ getFinalStates map (fsmRules ++ [epsRule] ++ epsRs)
+        tmpMap    = getDictionary (rules g ++ [epsRule]) []
+        map       = updateDict tmpMap (nonTerminals g)
         newRules  = convertRules map rulesPre
-        rulesPre  = preprocesRules [r | r <- rules g, snd r /= "#"] (fst epsRule, terminals g)
+        rulesPre  = preprocesRules [r | r <- (rules g), snd r /= "#"] (fst epsRule, terminals g)
         epsRule   = getEpsR $ rules g
+        fsmRules  = modifyRules (rulesPre) [fst x | x <- (rules g)] 
 
 -----------------------------------------
 -- find all terminal used in all rules --
@@ -176,6 +194,9 @@ getEpsR allR | epsNeeded allR = (head $ getNewNonTerminals 1 [fst r | r <- allR]
              | otherwise     = head allR
   where rs = [r | r <- allR, snd r == "#"]  
 
+-------------------------------------
+-- check if epsilon rule is needed --
+-------------------------------------
 epsNeeded :: [(String, String)] -> Bool
 epsNeeded [] = False
 epsNeeded (r:rs) | isSimple (snd r) [[a] | a <- ['a'..'z']] = True

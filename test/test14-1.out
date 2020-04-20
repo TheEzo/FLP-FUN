@@ -1,0 +1,11 @@
+B,S,S1,S2
+a,b
+S
+B->aB
+B->bB
+B->a
+B->b
+S->aS1
+S1->aB
+S->bS2
+S2->bS
