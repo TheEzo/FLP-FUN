@@ -1,8 +1,4 @@
-A,B,C,D
-a,b,c,X
 A
-B->bC
-A->aaB
-A->ccB
-C->aC
-C->#
+a,X
+A
+A->a

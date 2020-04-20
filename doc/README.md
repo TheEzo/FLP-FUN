@@ -11,7 +11,6 @@ Zadání bylo splněno se všemi požadavky, program tedy převádí pravou line
 * NKA - nedeterministický konečný automat;
 
 Řešení dále obsahuje ošetření základních chybových stavů, například:
-* Neterminál není použit v pravidlech;
 * Neterminál nenáleží seznamu [A..Z];
 * Terminál nenáleží seznamu [a..z];
 * Pravidla nejsou ve tvaru A->xB (chybějící šipka a formát pravidla);

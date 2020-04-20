@@ -1,8 +1,8 @@
 A,B,C
 a,b
 A
-B->bC
 A->aaB
-A->ccB
+A->bbC
+B->#
+B->b
 C->aC
-C->#

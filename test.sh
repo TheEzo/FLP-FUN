@@ -4,8 +4,8 @@
 # Autor:   Tomas Willaschek
 # Rok:     2020
 
-test_count=5
-err_test_count=0
+test_count=13
+err_test_count=5
 
 make > /dev/null
 
